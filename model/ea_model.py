@@ -54,8 +54,6 @@ class EaModel(nn.Module):
 
         #self.ea_layer.to(self.base_model.dtype).to(device)
         self.init_tree()
-        #self.base_model.setup_caches(1,2000)
-        #self.ea_layer.setup_caches(1, 2000)
 
     def get_tokenizer(self):
         """Get the tokenizer of the base model.
@@ -71,12 +69,13 @@ class EaModel(nn.Module):
             Type="LLaMA",
             base_model_path=None,
             ea_model_path=None,
+            use_tp = False,
             **kwargs,
     ):
 
 
         base_model = llamafast.from_pretrained(
-            base_model_path
+            base_model_path, use_tp=use_tp
         )
 
 

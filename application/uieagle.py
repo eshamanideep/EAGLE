@@ -13,7 +13,7 @@ import re
 torch._inductor.config.coordinate_descent_tuning = True
 torch._inductor.config.triton.unique_kernel_names = True
 torch._inductor.config.fx_graph_cache = True # Experimental feature to reduce compilation times, will be on by default in future
-torch._dynamo.config.cache_size_limit=64
+# torch._dynamo.config.cache_size_limit=64
 
 
 def truncate_list(lst, num):
@@ -268,7 +268,8 @@ model = EaModel.from_pretrained(
     low_cpu_mem_usage=True,
     load_in_4bit=args.load_in_4bit,
     load_in_8bit=args.load_in_8bit,
-    device_map="auto"
+    device_map="auto",
+    use_tp=True #testing out tp in 2 gpu setting now
 )
 model.eval()
 

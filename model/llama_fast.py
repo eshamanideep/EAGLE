@@ -13,7 +13,7 @@ from torch import Tensor
 from torch.nn import functional as F
 from pathlib import Path
 
-def _load_model(checkpoint_path, device="cuda", precision=torch.bfloat16):
+def _load_model(checkpoint_path, *,  device="cuda", precision=torch.bfloat16, use_tp = False):
     path=Path(checkpoint_path)
     checkpoint_path=path
     with torch.device('meta'):
@@ -173,8 +173,8 @@ class Transformer(nn.Module):
         return cls(ModelArgs.from_config(path))
 
     @classmethod
-    def from_pretrained(cls, path):
-        model=_load_model(path)
+    def from_pretrained(cls, path, *, use_tp = False):
+        model=_load_model(path, use_tp = use_tp)
         return model
 
 
