@@ -449,6 +449,7 @@ class EaModel(nn.Module):
     ):
         current_length_data = 0
         device = self.base_model.output.weight.device
+        print("Naive generate on device ", device)
         if temperature > 1e-5:
             logits_processor = prepare_logits_processor(temperature=temperature, top_p=top_p, top_k=top_k)
         else:
@@ -497,7 +498,9 @@ class EaModel(nn.Module):
         input_pos = torch.arange(0, input_ids.shape[1], device=input_ids.device)
         mask = causal_mask[None, None, input_pos]
 
+        print("Base model forward applying on device ", input_ids.device)
         logits, hidden_states = self.base_model(input_ids, input_pos)
+        print("base model forward done on device ", input_ids.device)
 
         new_token = 0
 

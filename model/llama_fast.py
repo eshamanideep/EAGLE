@@ -37,6 +37,10 @@ def _load_model(checkpoint_path, *,  device="cuda", precision=torch.bfloat16, us
     checkpoint = torch.load(str(checkpoint_path), mmap=True, weights_only=True)
     model.load_state_dict(checkpoint, assign=True)
 
+    if use_tp:
+        from model.tp import apply_tp
+        print("Applying tensor parallel to model ...")
+        apply_tp(model)
 
     model = model.to(device=device, dtype=precision)
     return model.eval()
