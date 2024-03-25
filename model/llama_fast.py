@@ -158,7 +158,10 @@ class Transformer(nn.Module):
 
     def forward(self, idx: Tensor, input_pos: Optional[Tensor] = None) -> Tuple[Tensor,Tensor]:
         assert self.freqs_cis is not None, "Caches must be initialized first"
+        self.causal_mask = self.causal_mask.to(input_pos.device)
         mask = self.causal_mask[None, None, input_pos]
+
+        self.freqs_cis = self.freqs_cis.to(input_pos.device)
         freqs_cis = self.freqs_cis[input_pos]
         x = self.tok_embeddings(idx)
 
