@@ -13,7 +13,6 @@ import re
 torch._inductor.config.coordinate_descent_tuning = True
 torch._inductor.config.triton.unique_kernel_names = True
 torch._inductor.config.fx_graph_cache = True # Experimental feature to reduce compilation times, will be on by default in future
-# torch._dynamo.config.cache_size_limit=64
 
 
 def truncate_list(lst, num):
@@ -259,8 +258,16 @@ parser.add_argument(
     default=1024,
     help="The maximum number of new generated tokens.",
 )
+parser.add_argument(
+    "--compile", action = "store_true", help = "Compile the forward passes"
+)
 args = parser.parse_args()
 
+#handle tensor parallelism
+from model.tp import maybe_init_dist
+rank = maybe_init_dist()
+
+print("Loading the model")
 model = EaModel.from_pretrained(
     base_model_path=args.base_model_path,
     ea_model_path=args.ea_model_path,
@@ -272,15 +279,17 @@ model = EaModel.from_pretrained(
     use_tp=True #testing out tp in 2 gpu setting now
 )
 model.eval()
+print("Model loaded")
 
-print("Compiling the forward passes")
-model.draft_one=torch.compile(model.draft_one, mode="reduce-overhead", fullgraph=True,dynamic=False)
-model.base_forward=torch.compile(model.base_forward, mode="reduce-overhead", fullgraph=True,dynamic=False)
-model.base_forward_one=torch.compile(model.base_forward_one, mode="reduce-overhead", fullgraph=True)
-print("Compilation done")
+if args.compile: 
+    model.draft_one=torch.compile(model.draft_one, mode="reduce-overhead", fullgraph=True,dynamic=False)
+    model.base_forward=torch.compile(model.base_forward, mode="reduce-overhead", fullgraph=True,dynamic=False)
+    model.base_forward_one=torch.compile(model.base_forward_one, mode="reduce-overhead", fullgraph=True)
 
+print("Warming up")
 warmup(model)
 warmup(model)
+print("Warmup done")
 
 custom_css = """
 #speed textarea {
