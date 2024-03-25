@@ -111,6 +111,8 @@ def warmupbase(model):
 
 def bot(history, session_state,):
     temperature, top_p, use_EaInfer, highlight_EaInfer =0.0,0.0,True,True
+    if args.use_naive:
+        use_EaInfer=False
     if not history:
         return history, "0.00 tokens/s", "0.00", session_state
     pure_history = session_state.get("pure_history", [])
@@ -261,6 +263,7 @@ parser.add_argument(
 parser.add_argument(
     "--compile", action = "store_true", help = "Compile the forward passes"
 )
+parser.add_argument("--use-naive", action = "store_true", help = "Use naive generate instead of eagle")
 args = parser.parse_args()
 
 #handle tensor parallelism

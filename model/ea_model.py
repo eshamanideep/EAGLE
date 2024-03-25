@@ -497,8 +497,6 @@ class EaModel(nn.Module):
         input_pos = torch.arange(0, input_ids.shape[1], device=input_ids.device)
         mask = causal_mask[None, None, input_pos]
 
-
-
         logits, hidden_states = self.base_model(input_ids, input_pos)
 
         new_token = 0
