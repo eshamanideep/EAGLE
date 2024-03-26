@@ -234,7 +234,7 @@ class EaModel(nn.Module):
         max_block_size = max_length
         max_block_size = find_multiple(max_block_size, 8)
 
-        print(max_block_size)
+        # print(max_block_size)
 
         if hasattr(self, "max_block_size") and self.max_block_size == max_block_size:
             causal_mask = self.causal_mask
@@ -331,7 +331,7 @@ class EaModel(nn.Module):
         max_block_size = max_length
         max_block_size = find_multiple(max_block_size, 8)
 
-        print(max_block_size)
+        # print(max_block_size)
         # from IPython import embed
         # embed()
 
@@ -423,7 +423,7 @@ class EaModel(nn.Module):
     ):
         current_length_data = 0
         device = self.base_model.output.weight.device
-        print("Naive generate on device ", device)
+        # print("Naive generate on device ", device)
         if temperature > 1e-5:
             logits_processor = prepare_logits_processor(temperature=temperature, top_p=top_p, top_k=top_k)
         else:

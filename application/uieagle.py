@@ -293,12 +293,14 @@ model.eval()
 print("Model loaded")
 
 if args.compile: 
-    if use_tp:
-        #cuda graph bugs when speculative decoding 
-        torch._inductor.config.triton.cudagraph_trees = False
-    model.draft_one=torch.compile(model.draft_one, mode="reduce-overhead", fullgraph=True,dynamic=False)
-    model.base_forward=torch.compile(model.base_forward, mode="reduce-overhead", fullgraph=True,dynamic=False)
-    model.base_forward_one=torch.compile(model.base_forward_one, mode="reduce-overhead", fullgraph=True)
+    #figure out a way to not switch off the cuda graphs as there is a large performance drop
+    if use_tp and not args.use_naive:
+        # torch._inductor.config.triton.cudagraph_trees = False
+        pass
+    model.base_forward=torch.compile(model.base_forward, mode="reduce-overhead", fullgraph=True, dynamic = False)
+    if args.use_naive: 
+        model.base_forward_one = torch.compile(model.base_forward_one, mode = "reduce-overhead", fullgraph = True, dynamic = False)
+    model.draft_one=torch.compile(model.draft_one, mode = "reduce-overhead", fullgraph = True, dynamic = False)
 
 if args.use_naive:
     warmup_func = warmupbase

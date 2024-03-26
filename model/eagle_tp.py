@@ -136,6 +136,7 @@ def _apply_tp_attn(attn: Attention) -> None:
 def _apply_tp_EAGLE(EAGLE: EAGLE) -> None:
     # overwrite config before EAGLE.setup_cache is called
     world_size = _get_world_size()
+    rank = _get_rank()
     EAGLE.config.n_head = EAGLE.config.n_head // world_size
     EAGLE.config.dim = EAGLE.config.dim // world_size
     EAGLE.config.n_local_heads = EAGLE.config.n_local_heads // world_size
@@ -147,7 +148,7 @@ def _apply_tp_EAGLE(EAGLE: EAGLE) -> None:
         #split the input before sending it to fc layer
         input_tensor = _input[0]
         assert input_tensor.size(dim = -1) % world_size == 0
-        return torch.tensor_split(input_tensor, world_size, dim=-1)[_get_rank()]
+        return torch.tensor_split(input_tensor, world_size, dim=-1)[rank]
     
     EAGLE.fc.register_forward_pre_hook(fc_input_hook)
 
