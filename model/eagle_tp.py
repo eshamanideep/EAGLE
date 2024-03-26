@@ -1,8 +1,4 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
-
-# This source code is licensed under the license found in the
-# LICENSE file in the root directory of this source tree.
+# eagle_tp.py
 import os
 from typing import List, Optional
 
@@ -15,8 +11,9 @@ else:
     # Distributed is not supported on MacOS
     funcol = None
 
-from .llama_fast import Attention, FeedForward, Transformer
-from .quantize_llama import WeightOnlyInt4Linear
+from .eagle_fast import Attention, FeedForward, EAGLE
+from .quantize_eagle import WeightOnlyInt4Linear
+
 
 def _get_rank() -> int:
     return int(os.environ.get("LOCAL_RANK", "0"))
@@ -98,10 +95,11 @@ def _apply_tp_linear(linear: nn.Linear, style: str, weight_splits: List[int] = [
         if hasattr(linear, "scales") and style == "colwise":
             linear.scales = shard(linear.scales, 0)
 
-    # local_break()
     linear.weight = nn.Parameter(sharded_weight, requires_grad=False)
     setattr(linear, size_attr, getattr(linear, size_attr) // world_size)
 
+    if style == "colwise" and linear.bias is not None:
+        linear.bias = nn.Parameter(shard(linear.bias, 0), requires_grad = False)
 
 def _apply_tp_ffn(mlp: FeedForward) -> None:
     assert hasattr(mlp, "w1")
@@ -110,16 +108,15 @@ def _apply_tp_ffn(mlp: FeedForward) -> None:
 
     _apply_tp_linear(mlp.w1, "colwise")
     _apply_tp_linear(mlp.w3, "colwise")
-    _apply_tp_linear(mlp.w2, "rowwise")
+    _apply_tp_linear(mlp.w2, "rowwise") 
 
     world_size = _get_world_size()
     mlp.register_forward_hook(lambda _module, _input, output: funcol.all_reduce(
         output, "sum", list(range(world_size))))
 
-
 def _apply_tp_attn(attn: Attention) -> None:
     assert hasattr(attn, "wqkv")
-    assert hasattr(attn, "wo")
+    assert hasattr(attn, "wo") 
 
     kv_size = attn.n_local_heads * attn.head_dim
     _apply_tp_linear(attn.wqkv, "colwise", [attn.dim, kv_size, kv_size])
@@ -133,19 +130,33 @@ def _apply_tp_attn(attn: Attention) -> None:
     attn.n_local_heads = attn.n_local_heads // world_size
 
     attn.register_forward_hook(lambda _module, _input, output: funcol.all_reduce(
-        output[0], "sum", list(range(world_size))))
+        output, "sum", list(range(world_size))))
 
 
-def _apply_tp_Transformer(Transformer: Transformer) -> None:
-    # overwrite config before Transformer.setup_cache is called
+def _apply_tp_EAGLE(EAGLE: EAGLE) -> None:
+    # overwrite config before EAGLE.setup_cache is called
     world_size = _get_world_size()
-    Transformer.config.n_head = Transformer.config.n_head // world_size
-    Transformer.config.dim = Transformer.config.dim // world_size
-    Transformer.config.n_local_heads = Transformer.config.n_local_heads // world_size
+    EAGLE.config.n_head = EAGLE.config.n_head // world_size
+    EAGLE.config.dim = EAGLE.config.dim // world_size
+    EAGLE.config.n_local_heads = EAGLE.config.n_local_heads // world_size
 
+    # Apply tensor parallelism to the fc layer
+    _apply_tp_linear(EAGLE.fc, "rowwise")
 
-def apply_tp(model: Transformer) -> None:
-    _apply_tp_Transformer(model)
+    def fc_input_hook(_module, _input):
+        #split the input before sending it to fc layer
+        input_tensor = _input[0]
+        assert input_tensor.size(dim = -1) % world_size == 0
+        return torch.tensor_split(input_tensor, world_size, dim=-1)[_get_rank()]
+    
+    EAGLE.fc.register_forward_pre_hook(fc_input_hook)
+
+    # All-reduce the output of the fc layer
+    EAGLE.fc.register_forward_hook(lambda _module, _input, output: funcol.all_reduce(
+        output, "sum", list(range(world_size))))
+
+def eagle_apply_tp(model: EAGLE) -> None:
+    _apply_tp_EAGLE(model)
     for block in model.layers:
         # Apply to MLP
         _apply_tp_ffn(block.feed_forward)

@@ -10,20 +10,18 @@ from fastchat.model import get_conversation_template
 import re
 import torch.distributed as dist
 
+def _get_world_size() -> int:
+    return int(os.environ.get("LOCAL_WORLD_SIZE", "1"))
 
 torch._inductor.config.coordinate_descent_tuning = True
 torch._inductor.config.triton.unique_kernel_names = True
 torch._inductor.config.fx_graph_cache = True # Experimental feature to reduce compilation times, will be on by default in future
-
+torch.manual_seed(42)
 
 def truncate_list(lst, num):
     if num not in lst:
         return lst
-
-
     first_index = lst.index(num)
-
-
     return lst[:first_index + 1]
 
 def find_list_markers(text):
@@ -136,8 +134,9 @@ def bot(history, session_state,):
 
     #stream the tensors to al the different gpus - first send the size of the input_ids tensor
     if use_tp:
-        dist.send(torch.tensor(input_ids.shape[1]).cuda(), dst = 1)
-        dist.send(input_ids, dst = 1)
+        for target_rank in range(1, _get_world_size()):
+            dist.send(torch.tensor(input_ids.shape[1]).cuda(), dst = target_rank)
+            dist.send(input_ids, dst = target_rank)
         torch.cuda.synchronize()
     input_len = input_ids.shape[1]
     naive_text = []
@@ -147,6 +146,7 @@ def bot(history, session_state,):
     start_time=time.time()
     total_ids=0
     if use_EaInfer:
+        # print("Using EA generate on cuda:0")
         for output_ids in model.ea_generate(input_ids, temperature=temperature, top_p=top_p,
                                             max_new_tokens=args.max_new_token):
             torch.cuda.synchronize()
@@ -293,6 +293,9 @@ model.eval()
 print("Model loaded")
 
 if args.compile: 
+    if use_tp:
+        #cuda graph bugs when speculative decoding 
+        torch._inductor.config.triton.cudagraph_trees = False
     model.draft_one=torch.compile(model.draft_one, mode="reduce-overhead", fullgraph=True,dynamic=False)
     model.base_forward=torch.compile(model.base_forward, mode="reduce-overhead", fullgraph=True,dynamic=False)
     model.base_forward_one=torch.compile(model.base_forward_one, mode="reduce-overhead", fullgraph=True)
@@ -302,10 +305,14 @@ if args.use_naive:
 else:
     warmup_func = warmup
 
+t0 = time.time()
 print("Warming up")
 warmup_func(model)
+t1 = time.time()
+print(f"First warmup done in {t1-t0:.2f}s")
 warmup_func(model)
-print("Warmup done")
+t2 = time.time()
+print(f"Second warmup done in {t2-t1:.2f}s")
 
 custom_css = """
 #speed textarea {
@@ -354,5 +361,9 @@ else:
         input_ids = input_ids.unsqueeze(0)
         torch.cuda.synchronize()
         total_outputs = []
-        for output_ids in model.naive_generate(input_ids,temperature=0.0, top_p = 0.0, max_new_tokens = args.max_new_token):
+        if args.use_naive:
+            model_forward = model.naive_generate 
+        else:
+            model_forward = model.ea_generate
+        for output_ids in model_forward(input_ids,temperature=0.0, top_p = 0.0, max_new_tokens = args.max_new_token):
             total_outputs.append(output_ids)

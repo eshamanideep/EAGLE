@@ -13,8 +13,7 @@ from torch import Tensor
 from torch.nn import functional as F
 from pathlib import Path
 
-
-def _load_model(checkpoint_path, device="cuda", precision=torch.bfloat16,bias=True):
+def _load_model(checkpoint_path, device="cuda", precision=torch.bfloat16,bias=True, use_tp = False):
     path=Path(checkpoint_path)
     checkpoint_path = path
     with torch.device('meta'):
@@ -38,6 +37,11 @@ def _load_model(checkpoint_path, device="cuda", precision=torch.bfloat16,bias=Tr
     checkpoint = torch.load(str(checkpoint_path), mmap=True, weights_only=True)
     model.load_state_dict(checkpoint, assign=True)
 
+    #tp for the eagle layer
+    if use_tp:
+        from model.eagle_tp import eagle_apply_tp
+        print("Applying tensor parallel to the eagle model")
+        eagle_apply_tp(model)
 
     model = model.to(device=device, dtype=precision)
     return model.eval()
@@ -135,7 +139,6 @@ class EAGLE(nn.Module):
         else:
             self.fc = nn.Linear(config.dim * 2, config.dim,bias=False)
         self.layers = nn.ModuleList(TransformerBlock(config) for _ in range(config.n_layer))
-        #self.norm = RMSNorm(config.dim, eps=config.norm_eps)
         self.output = nn.Linear(config.dim, config.vocab_size, bias=False)
 
         self.freqs_cis: Optional[Tensor] = None
@@ -164,7 +167,6 @@ class EAGLE(nn.Module):
         fco = self.fc(torch.cat((emb, hidden_states), dim=-1))
         #self.fco=x
 
-
         x = self.layers[0](fco, input_pos, freqs_cis,mask)
         # x = self.norm(x)
         logits = self.output(x)
@@ -175,8 +177,8 @@ class EAGLE(nn.Module):
         return cls(ModelArgs.from_config(path),bias=bias)
 
     @classmethod
-    def from_pretrained(cls, path,bias=True):
-        model=_load_model(path,bias=bias)
+    def from_pretrained(cls, path,bias=True, use_tp = False):
+        model=_load_model(path,bias=bias, use_tp = use_tp)
         return model
 
 
@@ -186,10 +188,8 @@ class TransformerBlock(nn.Module):
         self.attention = Attention(config)
         self.feed_forward = FeedForward(config)
         self.ffn_norm = RMSNorm(config.dim, config.norm_eps)
-        #self.attention_norm = RMSNorm(config.dim, config.norm_eps)
 
     def forward(self, x: Tensor, input_pos: Tensor, freqs_cis: Tensor, mask: Tensor) -> Tensor:
-        # h = x + self.attention(self.attention_norm(x), freqs_cis, mask, input_pos)
         h = x + self.attention(x, freqs_cis, mask, input_pos)
         out = h + self.feed_forward(self.ffn_norm(h))
         return out

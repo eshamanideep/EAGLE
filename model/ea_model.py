@@ -37,6 +37,7 @@ class EaModel(nn.Module):
             base_model,
             base_model_name_or_path,
             ea_model_path,
+            use_tp = False
     ):
 
         super().__init__()
@@ -47,8 +48,7 @@ class EaModel(nn.Module):
         self.tokenizer = AutoTokenizer.from_pretrained(tokenpath)
         # tokenizer_path=str(Path(self.base_model_name_or_path).parent/"tokenizer.model")
         # self.tokenizer = SentencePieceProcessor(model_file=str(tokenizer_path))
-        self.ea_layer = eaglefast.from_pretrained(ea_model_path)
-
+        self.ea_layer = eaglefast.from_pretrained(ea_model_path, use_tp = False)
 
         #device = base_model.output.weight.device
 
@@ -83,13 +83,12 @@ class EaModel(nn.Module):
         model = cls(
             base_model,
             base_model_path,
-            ea_model_path
+            ea_model_path,
+            use_tp = use_tp
         )
 
 
         return model
-
-
 
     def init_tree(self):
         self.tree = mc_sim_7b_63
@@ -103,11 +102,9 @@ class EaModel(nn.Module):
         logits, hidden=self.ea_layer(hidden_states,idx,input_pos)
         return logits,hidden
 
-
     def draft_one(self,hidden_states_one: Tensor,idx_one: Tensor, input_pos_one: Tensor):
         logits_one, hidden_one=self.ea_layer(hidden_states_one,idx_one,input_pos_one)
         return logits_one,hidden_one
-
 
     def repeat_hidden(self,hidden_state,repeat_num):
         new_hidden=[]
@@ -134,11 +131,6 @@ class EaModel(nn.Module):
 
         return sampled_indices, sampled_probs,probabilities
 
-
-
-
-
-
     def chaintopK_genrate(self,hidden_states, input_ids, logits_processor,sk=3):
         input_ids = input_ids[:, 1:]
         init_pos=input_ids.shape[1]-hidden_states.shape[1]
@@ -152,10 +144,8 @@ class EaModel(nn.Module):
         input_ids=input_ids.clone()
         hidden_states=hidden_states.clone()
 
-
         #with Timer("draft many"):
         logits,hidden = self.draft_many(hidden_states, input_ids,input_pos)
-
 
         kv_len=len_posi
 
@@ -208,8 +198,6 @@ class EaModel(nn.Module):
 
         return (torch.cat(ss_token), torch.cat(ss_prob), ss_op)
 
-
-
     def base_forward(self,idx: Tensor, input_pos: Tensor):
         logits,hidden=self.base_model(idx,input_pos)
         return logits,hidden
@@ -218,13 +206,6 @@ class EaModel(nn.Module):
     def base_forward_one(self,idx_one: Tensor, input_pos_one: Tensor):
         logits,hidden=self.base_model(idx_one,input_pos_one)
         return logits,hidden
-
-
-
-
-
-
-
 
     @torch.no_grad()
     def ea_generate(
@@ -255,14 +236,11 @@ class EaModel(nn.Module):
 
         print(max_block_size)
 
-
         if hasattr(self, "max_block_size") and self.max_block_size == max_block_size:
             causal_mask = self.causal_mask
 
 
         else:
-
-
             causal_mask = torch.tril(
                 torch.ones(max_block_size, max_block_size, dtype=torch.bool, device=device))
             self.causal_mask = causal_mask
@@ -273,8 +251,6 @@ class EaModel(nn.Module):
 
 
             self.max_block_size = max_block_size
-
-
 
         if hasattr(self, "tree_choices") and self.tree_choices == tree_choices:
             tree_buffers = self.tree_buffers
@@ -293,8 +269,6 @@ class EaModel(nn.Module):
         new_token = 0
 
         for idx in range(max_new_tokens):
-
-
             candidates=torch.cat((sample_token,tree_logits[0].view(1,-1)),dim=1)
             if logits_processor is not None:
                 candidates_prob=torch.cat((torch.tensor([[1]],dtype=torch.long,device=tree_logits[1].device)
@@ -498,9 +472,7 @@ class EaModel(nn.Module):
         input_pos = torch.arange(0, input_ids.shape[1], device=input_ids.device)
         mask = causal_mask[None, None, input_pos]
 
-        print("Base model forward applying on device ", input_ids.device)
         logits, hidden_states = self.base_model(input_ids, input_pos)
-        print("base model forward done on device ", input_ids.device)
 
         new_token = 0
 

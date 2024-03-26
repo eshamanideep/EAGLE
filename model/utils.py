@@ -348,8 +348,6 @@ def chaintree_decoding(
     len_pos = input_ids.shape[1]
     mask_pos = torch.arange(len_pos, len_pos + candidates.shape[1], device=candidates.device)
 
-    # with Timer("sbase"):
-    # print(mask_pos_base)
     with torch.backends.cuda.sdp_kernel(enable_flash=False, enable_mem_efficient=False, enable_math=True):
         tree_logits, hidden_state = model.base_forward(candidates, mask_pos)
 
@@ -400,7 +398,7 @@ def evaluate_posterior(
                     if xi in candidates_set or xi == -1:
                         continue
                     candidates_set.append(xi)
-                    r = random.random()
+                    r = torch.rand(1, device = candidates.device)
                     px = gtp[xi]
                     qx = cart_candidates_prob[j, i]
                     if qx <= 0:
@@ -462,7 +460,7 @@ def chainevaluate_posterior(
             adjustflag = False
             for j in range(candidates.shape[0]):
                 if is_eq[j]:
-                    r = random.random()
+                    r = torch.rand(1, device = candidates.device)
                     x = candidates[j, i]
                     if x == 0:
                         continue
@@ -491,7 +489,6 @@ def chainevaluate_posterior(
             gt_logits = logits[best_candidate, accept_length - 1]
             sample_p = torch.softmax(gt_logits, dim=0)
         return torch.tensor(best_candidate), accept_length - 1, sample_p
-
 
 @torch.no_grad()
 def update_inference_inputs(
