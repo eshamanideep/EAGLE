@@ -4,10 +4,18 @@ import random
 from typing import List, Tuple
 import torch
 import time
+import os
 
 # TODO
 # from transformers import LlamaTokenizer
 # tokenizer=LlamaTokenizer.from_pretrained("/home/lyh/weights/hf/vicuna_v13/7B/")
+
+def _get_rank() -> int:
+    return int(os.environ.get("LOCAL_RANK", "0"))
+
+def rank0_print(*args, **kwargs):
+    if _get_rank() == 0:
+        print(*args, **kwargs)
 
 TOPK = 10  # topk for sparse tree
 
@@ -21,9 +29,9 @@ from transformers.generation.logits_process import (
 
 
 class Timer:
-    def __init__(self, name):
+    def __init__(self, name, show = True):
         self.name = name
-
+        self.show = show
     def __enter__(self):
         torch.cuda.synchronize()
         self.start = time.perf_counter()
@@ -32,8 +40,8 @@ class Timer:
         # 计算并打印经过的时间
         torch.cuda.synchronize()
         elapsed = time.perf_counter() - self.start
-        print(f'{self.name} took {elapsed} seconds')
-
+        if self.show:
+            rank0_print(f'{self.name} took {elapsed}s ({1/elapsed if elapsed else float("inf")}/s)')
 
 def prepare_logits_processor(
         temperature: float = 0.0,
@@ -348,11 +356,10 @@ def chaintree_decoding(
     len_pos = input_ids.shape[1]
     mask_pos = torch.arange(len_pos, len_pos + candidates.shape[1], device=candidates.device)
 
-    with torch.backends.cuda.sdp_kernel(enable_flash=False, enable_mem_efficient=False, enable_math=True):
-        tree_logits, hidden_state = model.base_forward(candidates, mask_pos)
+    with Timer("base_forward"):
+        with torch.backends.cuda.sdp_kernel(enable_flash=False, enable_mem_efficient=False, enable_math=True):
+            tree_logits, hidden_state = model.base_forward(candidates, mask_pos)
 
-    # tree_logits_out=tree_logits.clone()
-    # hidden_state_out=hidden_state.clone()
 
     logits = tree_logits
     return logits, hidden_state

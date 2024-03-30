@@ -9,25 +9,33 @@ from .cnets import Model
 from .configs import EConfig
 from huggingface_hub import hf_hub_download
 from .llama_fast import Transformer as llamafast
+from .mixtral_fast import Transformer as mixtralfast
 from .eagle_fast import EAGLE as eaglefast,find_multiple
 from pathlib import Path
 from .choices import mc_sim_7b_63
 from .utils_c import generate_tree_buffers as generate_tree_buffersc
 
+def _get_rank() -> int:
+    return int(os.environ.get("LOCAL_RANK", "0"))
+
+def rank0_print(*args, **kwargs):
+    if _get_rank() == 0:
+        print(*args, **kwargs)
 
 class Timer:
-    def __init__(self,name):
+    def __init__(self,name, show = True):
         self.name = name
+        self.show = show
     def __enter__(self):
         torch.cuda.synchronize()
         self.start = time.perf_counter()
-
 
     def __exit__(self, exc_type, exc_value, traceback):
         # 计算并打印经过的时间
         torch.cuda.synchronize()
         elapsed = time.perf_counter() - self.start
-        print(f'{self.name} took {elapsed} seconds')
+        if self.show:
+            rank0_print(f'{self.name} took {elapsed}s ({1/elapsed if elapsed else float("inf")}/s)')
 
 top_k=10
 class EaModel(nn.Module):
@@ -73,10 +81,15 @@ class EaModel(nn.Module):
             **kwargs,
     ):
 
-
-        base_model = llamafast.from_pretrained(
-            base_model_path, use_tp=use_tp
-        )
+        if Type == "LlaMA":
+            base_model = llamafast.from_pretrained(
+                base_model_path, use_tp=use_tp
+            )
+        else:
+            #only other model is mixtral for now
+            base_model = mixtralfast.from_pretrained(
+                base_model_path, use_tp = use_tp
+            )
 
 
         #configpath=str(Path(ea_model_path).parent/"config.json")
@@ -140,7 +153,6 @@ class EaModel(nn.Module):
         len_posi = init_pos+1
         input_pos=torch.arange(init_pos,init_pos+input_ids.shape[1],device=input_ids.device)
 
-
         input_ids=input_ids.clone()
         hidden_states=hidden_states.clone()
 
@@ -184,12 +196,11 @@ class EaModel(nn.Module):
 
             position_ids = len_posi + self.tree_buffer["position_ids"][i]
 
-            #with Timer("draft one"):
-            with torch.backends.cuda.sdp_kernel(enable_flash=False, enable_mem_efficient=False, enable_math=True):
-                logits,hidden = self.draft_one(hidden_states, input_ids,position_ids)
+            with Timer("draft one"):
+                with torch.backends.cuda.sdp_kernel(enable_flash=False, enable_mem_efficient=False, enable_math=True):
+                    logits,hidden = self.draft_one(hidden_states, input_ids,position_ids)
             tl=logits[0]
             len_posi += 1
-
 
         if logits_processor is not None:
             topk_index,topk_prob,op=self.sample(logits[0],logits_processor,k=1)
@@ -207,7 +218,6 @@ class EaModel(nn.Module):
     def base_forward(self,idx: Tensor, input_pos: Tensor):
         logits,hidden=self.base_model(idx,input_pos)
         return logits,hidden
-
 
     def base_forward_one(self,idx_one: Tensor, input_pos_one: Tensor):
         logits,hidden=self.base_model(idx_one,input_pos_one)

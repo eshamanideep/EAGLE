@@ -121,6 +121,10 @@ def bot(history, session_state,):
     if args.model_type == "llama-2-chat":
         sys_p = "You are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe.  Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature.\n\nIf a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information."
         conv.system_message = sys_p
+    elif args.model_type == "mixtral":
+        conv = get_conversation_template("llama-2-chat")
+        conv.system_message = ''
+        conv.sep2 = "</s>"
 
     for query, response in pure_history:
         conv.append_message(conv.roles[0], query)
