@@ -147,6 +147,12 @@ class EaModel(nn.Module):
         #with Timer("draft many"):
         logits,hidden = self.draft_many(hidden_states, input_ids,input_pos)
 
+        rows_to_append = 4 - hidden.shape[1]
+        if rows_to_append > 0:
+            #extend the tensor to test things out
+            append_tensor = torch.rand(1, rows_to_append, 4096, device = hidden.device, dtype = torch.bfloat16)
+            hidden = torch.cat((append_tensor, hidden), dim = 1)
+
         kv_len=len_posi
 
         tl=logits[:, -1]

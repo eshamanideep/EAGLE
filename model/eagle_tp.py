@@ -98,8 +98,12 @@ def _apply_tp_linear(linear: nn.Linear, style: str, weight_splits: List[int] = [
     linear.weight = nn.Parameter(sharded_weight, requires_grad=False)
     setattr(linear, size_attr, getattr(linear, size_attr) // world_size)
 
-    if style == "colwise" and linear.bias is not None:
-        linear.bias = nn.Parameter(shard(linear.bias, 0), requires_grad = False)
+    if linear.bias is not None:
+        if style == "colwise":
+            linear.bias = nn.Parameter(shard(linear.bias, 0), requires_grad = False)
+        else:
+            #bias will be applied to each shard separately and we sum them, so divide the bias by world size
+            linear.bias = nn.Parameter(linear.bias / world_size, requires_grad = False)
 
 def _apply_tp_ffn(mlp: FeedForward) -> None:
     assert hasattr(mlp, "w1")
