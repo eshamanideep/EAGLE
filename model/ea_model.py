@@ -45,7 +45,8 @@ class EaModel(nn.Module):
             base_model,
             base_model_name_or_path,
             ea_model_path,
-            use_tp = False
+            use_tp = False,
+            bias = True
     ):
 
         super().__init__()
@@ -56,7 +57,7 @@ class EaModel(nn.Module):
         self.tokenizer = AutoTokenizer.from_pretrained(tokenpath)
         # tokenizer_path=str(Path(self.base_model_name_or_path).parent/"tokenizer.model")
         # self.tokenizer = SentencePieceProcessor(model_file=str(tokenizer_path))
-        self.ea_layer = eaglefast.from_pretrained(ea_model_path, use_tp = False)
+        self.ea_layer = eaglefast.from_pretrained(ea_model_path, use_tp = False, bias = bias)
 
         #device = base_model.output.weight.device
 
@@ -85,11 +86,13 @@ class EaModel(nn.Module):
             base_model = llamafast.from_pretrained(
                 base_model_path, use_tp=use_tp
             )
+            bias = True
         else:
             #only other model is mixtral for now
             base_model = mixtralfast.from_pretrained(
                 base_model_path, use_tp = use_tp
             )
+            bias = False
 
 
         #configpath=str(Path(ea_model_path).parent/"config.json")
@@ -97,7 +100,8 @@ class EaModel(nn.Module):
             base_model,
             base_model_path,
             ea_model_path,
-            use_tp = use_tp
+            use_tp = use_tp,
+            bias = bias
         )
 
 

@@ -95,7 +95,8 @@ class ModelArgs:
         dic={
             "n_layer":config['num_hidden_layers'],
             "n_head":config['num_attention_heads'],
-            "dim":config['hidden_size']
+            "dim":config['hidden_size'],
+            "intermediate_size":config['intermediate_size']
         }
         return cls(**dic)
 
