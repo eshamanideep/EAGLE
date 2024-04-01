@@ -506,8 +506,8 @@ class EaModel(nn.Module):
                 input_id = logits[:, -1:].argmax(dim=-1)
             input_pos=torch.arange(input_ids.shape[1], input_ids.shape[1]+1, device=input_ids.device)
             with torch.backends.cuda.sdp_kernel(enable_flash=False, enable_mem_efficient=False, enable_math=True):
-                #with Timer("naive base"):
-                logits, hidden_states = self.base_forward_one(input_id, input_pos)
+                with Timer("naive base"):
+                    logits, hidden_states = self.base_forward_one(input_id, input_pos)
             input_ids = torch.cat([input_ids, input_id], dim=-1)
 
             yield input_ids

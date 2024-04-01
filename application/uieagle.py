@@ -158,12 +158,16 @@ def bot(history, session_state,):
     torch.cuda.synchronize()
     start_time=time.time()
     total_ids=0
+    first = True
     if use_EaInfer:
         # print("Using EA generate on cuda:0")
         for output_ids in model.ea_generate(input_ids, temperature=temperature, top_p=top_p,
                                             max_new_tokens=args.max_new_token):
             torch.cuda.synchronize()
-            totaltime+=(time.time()-start_time)
+            if first:
+                totaltime = 0
+            else:
+                totaltime += (time.time()-start_time)
             total_ids+=1
             decode_ids = output_ids[0, input_len:].tolist()
             decode_ids = truncate_list(decode_ids, model.tokenizer.eos_token_id)
@@ -174,7 +178,6 @@ def bot(history, session_state,):
                                                      clean_up_tokenization_spaces=True, ))
 
             #print(output_ids)
-
             cu_len = output_ids.shape[1]
             colored_text = highlight_text(text, naive_text, "orange")
             if highlight_EaInfer:
@@ -186,17 +189,22 @@ def bot(history, session_state,):
             new_tokens = cu_len-input_len
             # print(new_tokens)
             # print(totaltime)
-            yield history,f"{new_tokens/totaltime:.2f} tokens/s",f"{new_tokens/total_ids:.2f}",session_state
+            if first:
+                yield history,f"0.00 tokens/s",f"0.00",session_state
+                first = False
+            else:
+                yield history,f"{new_tokens/totaltime:.2f} tokens/s",f"{new_tokens/total_ids:.2f}",session_state
             torch.cuda.synchronize()
             start_time = time.time()
-
-
     else:
         # print("Using naive generate")
         for output_ids in model.naive_generate(input_ids, temperature=temperature, top_p=top_p,
                                                max_new_tokens=args.max_new_token):
             torch.cuda.synchronize()
-            totaltime += (time.time() - start_time)
+            if first:
+                totaltime = 0
+            else:
+                totaltime += (time.time() - start_time)
             total_ids+=1
             decode_ids = output_ids[0, input_len:].tolist()
             decode_ids = truncate_list(decode_ids, model.tokenizer.eos_token_id)
@@ -216,7 +224,11 @@ def bot(history, session_state,):
             new_tokens = cu_len - input_len
             # print(new_tokens)
             # print(totaltime)
-            yield history,f"{new_tokens/totaltime:.2f} tokens/s",f"{new_tokens/total_ids:.2f}",session_state
+            if first:
+                yield history,f"0.00 tokens/s",f"0.00",session_state
+                first = False
+            else:
+                yield history,f"{new_tokens/totaltime:.2f} tokens/s",f"{new_tokens/total_ids:.2f}",session_state
             torch.cuda.synchronize()
             start_time = time.time()
 
@@ -312,9 +324,11 @@ if args.compile:
     if use_tp and not args.use_naive:
         # torch._inductor.config.triton.cudagraph_trees = False
         pass
-    model.base_forward=torch.compile(model.base_forward, mode="reduce-overhead", fullgraph=True, dynamic = False)
     if args.use_naive: 
         model.base_forward_one = torch.compile(model.base_forward_one, mode = "reduce-overhead", fullgraph = True, dynamic = False)
+        model.base_forward=torch.compile(model.base_forward, mode="reduce-overhead", fullgraph=True, dynamic = True)
+    else:
+        model.base_forward=torch.compile(model.base_forward, mode="reduce-overhead", fullgraph=True, dynamic = False)
     model.draft_one=torch.compile(model.draft_one, mode = "reduce-overhead", fullgraph = True, dynamic = False)
 
 if args.use_naive:
